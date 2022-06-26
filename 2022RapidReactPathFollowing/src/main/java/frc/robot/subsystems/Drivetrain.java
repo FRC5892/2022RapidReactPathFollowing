@@ -36,16 +36,19 @@ public class Drivetrain extends SubsystemBase {
 	private CANSparkMax rightMotor2 = driveMotor(5, false);
 	private CANSparkMax rightMotor3 = driveMotor(6, false);
 
-	private Encoder leftEncoder = new Encoder(0, 1, true);
-	private Encoder rightEncoder = new Encoder(2, 3, false);
+	private Encoder m_leftEncoder = new Encoder(0, 1, true);
+	private Encoder m_rightEncoder = new Encoder(2, 3, false);
 
 	private MotorControllerGroup leftMotors = new MotorControllerGroup(leftMotor1, leftMotor2, leftMotor3);
 	private MotorControllerGroup rightMotors = new MotorControllerGroup(rightMotor1, rightMotor2, rightMotor3);
 
 	private DifferentialDrive drive = new DifferentialDrive(leftMotors, rightMotors);
-
-  public Drivetrain() {}
-
+  private final Gyro m_gyro = new ADXRS450_Gyro();
+  private final DifferentialDriveOdometry m_odometry;
+  
+  public Drivetrain() {
+    m_odometry = new DifferentialDriveOdometry(m_gyro.getRotation2d());
+  }
 
   public CANSparkMax driveMotor(int motorID, boolean inverted) {
 		CANSparkMax sparkMax = new CANSparkMax(motorID, MotorType.kBrushless);
@@ -56,9 +59,48 @@ public class Drivetrain extends SubsystemBase {
     return sparkMax;
   }
 
+  public void driveWithJoysticks(double xSpeed, double zRotation) {
+		drive.arcadeDrive(xSpeed, zRotation, true);
+	}
+
+  public void arcadeDrive(double xSpeed, double zRotation) {
+		drive.arcadeDrive(xSpeed, zRotation, false);
+	}
 
   @Override
   public void periodic() {
+    m_odometry.update(
+        m_gyro.getRotation2d(), m_leftEncoder.getDistance(), m_rightEncoder.getDistance());
+    
     // This method will be called once per scheduler run
+    m_leftEncoder.setDistancePerPulse(Constants.kEncoderDistancePerPulse);
+    m_rightEncoder.setDistancePerPulse(Constants.kEncoderDistancePerPulse);
   }
+
+  public void stopMotors() {
+		drive.stopMotor();
+	}
+
+  public DifferentialDriveWheelSpeeds getWheelSpeeds() {
+    return new DifferentialDriveWheelSpeeds(m_leftEncoder.getRate(), m_rightEncoder.getRate());
+  }
+
+  public double getHeading() {
+    return m_gyro.getRotation2d().getDegrees();
+  }
+
+  public Pose2d getPose() {
+    return m_odometry.getPoseMeters();
+  }
+  public void tankDriveVolts(double leftVolts, double rightVolts) {
+    leftMotors.setVoltage(leftVolts);
+    rightMotors.setVoltage(rightVolts);
+    drive.feed();
+  }
+
+  public void resetOdometry(Pose2d pose) {
+		m_leftEncoder.reset();
+		m_rightEncoder.reset();
+		m_odometry.resetPosition(pose, m_gyro.getRotation2d());
+	  }
 }
